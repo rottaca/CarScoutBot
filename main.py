@@ -249,7 +249,8 @@ def watch(update, context, chat_id, chat_data, url):
         remove_job_if_exists(str(chat_id), context)
         context.job_queue.run_repeating(on_timeout, check_interval, context=chat_id, name=str(chat_id))
         update.message.reply_text("Successfully registered. You will get notified when new cars are available! "
-                                  f"Currently, your query shows {len(curr_cars)} vehicles. Checking for updates...")
+                                  f"Currently, your query shows {len(curr_cars)} vehicles. "
+                                  f"Checking for updates every {check_interval/60} minutes...")
     except (IndexError, ValueError):
         update.message.reply_text('Usage: /watch')
 
