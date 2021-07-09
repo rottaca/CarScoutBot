@@ -169,27 +169,7 @@ def start_watch(update, context):
     update.message.reply_text("Please specify a search URL to watch!")
 
 
-def list_func(update, context):
-    chat_data = get_chat(context, update.effective_chat.id)
-    chat_data[STATE] = ChatStates.INIT
-
-    if len(chat_data[URLS]) > 0:
-        txt = "You have registered these search queries:\n"
-        for idx, url in enumerate(chat_data[URLS]):
-            txt += f" {idx + 1:<2}: <b>{url[PAGE_TYPE].value.upper()}</b>: I found <b>{len(url[CARS_FOUND])}</b> cars. Open <a href=\"{url[URL_PATH]}\">URL</a>\n"
-    else:
-        txt = "No queries register. Use /watch to register a new query. Use /move to remove a new query."
-
-    context.bot.send_message(chat_id=update.effective_chat.id,
-                             text=txt,
-                             parse_mode=telegram.ParseMode.HTML,
-                             disable_web_page_preview=True)
-
-
-def on_timeout(context: CallbackContext) -> None:
-    chat_id = context.job.context
-    chat_data = get_chat(context, chat_id)
-
+def check_urls(context, chat_data, chat_id):
     for idx, url in enumerate(chat_data[URLS]):
         print(f"Checking url {idx} from {url[PAGE_TYPE]}.")
         curr_cars = get_cars_from_url(url)
@@ -201,6 +181,30 @@ def on_timeout(context: CallbackContext) -> None:
                                           f"<a href=\"{url[URL_PATH]}\">link</a>!",
                                      parse_mode=telegram.ParseMode.HTML)
             url[CARS_FOUND] = curr_cars
+
+
+def list_func(update, context):
+    chat_data = get_chat(context, update.effective_chat.id)
+    chat_data[STATE] = ChatStates.INIT
+    chat_id = update.effective_chat.id
+    if len(chat_data[URLS]) > 0:
+        check_urls(context, chat_data, chat_id)
+        txt = "You have registered these search queries:\n"
+        for idx, url in enumerate(chat_data[URLS]):
+            txt += f" {idx + 1:<2}: <b>{url[PAGE_TYPE].value.upper()}</b>: I found <b>{len(url[CARS_FOUND])}</b> cars. Open <a href=\"{url[URL_PATH]}\">URL</a>\n"
+    else:
+        txt = "No queries register. Use /watch to register a new query. Use /move to remove a new query."
+
+    context.bot.send_message(chat_id=chat_id,
+                             text=txt,
+                             parse_mode=telegram.ParseMode.HTML,
+                             disable_web_page_preview=True)
+
+
+def on_timeout(context: CallbackContext) -> None:
+    chat_id = context.job.context
+    chat_data = get_chat(context, chat_id)
+    check_urls(context, chat_data, chat_id)
 
 
 def detect_page_type(url):
