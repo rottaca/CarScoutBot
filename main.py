@@ -69,7 +69,8 @@ def get_help(update, context):
            "Commands: \n" \
            " - /watch: Register a new search query \n" \
            " - /remove: Remove an existing search query \n" \
-           " - /list: List registered queries \n"
+           " - /list: List registered queries \n" \
+           " - /update: Manually trigger an update"
 
     update.message.reply_text(text)
 
@@ -83,7 +84,7 @@ def get_html(url):
     return data.content
 
 
-def parse_html_mobile(html):
+def parse_html_mobile(html, url_data: dict):
     parsed_html = BeautifulSoup(html, features="html.parser")
     try:
         # Find list of results
@@ -102,18 +103,26 @@ def parse_html_mobile(html):
     return items
 
 
-def parse_html_autoscout24(html):
+def parse_html_autoscout24(html, url_data: dict):
     parsed_html = BeautifulSoup(html, features="html.parser")
     try:
         # Find list of results
         results = parsed_html.body.find_all('div', attrs={'class': 'cl-list-element-gap'})
         # Find unique Ids for vehicles.
         items = [r.attrs["data-guid"] for r in results if "data-guid" in r.attrs]
+        # For each. find link to details
+        detail_urls = [r.find("a", attrs={"data-item-name": "detail-page-link"}).attrs["href"] for r in results if
+                       "data-guid" in r.attrs]
+        detail_urls = [f"https://www.autoscout24.de{url}" for url in detail_urls]
 
-        print(f"Number of cars found: {len(items)}")
         items = set(items)
+        url_data["autoscout_detail_links"] = dict(zip(items, detail_urls))
+        print(f"Number of cars found: {len(items)}")
+        print(url_data["autoscout_detail_links"])
+
     except KeyError:
         items = set()
+        url_data["autoscout_detail_links"] = {}
         print("Unable to process url! ")
         with open("error.html", "w") as f:
             f.write(parsed_html.prettify())
@@ -121,27 +130,29 @@ def parse_html_autoscout24(html):
     return items
 
 
-def parse_html(html, page_type: PageTypes):
+def parse_html(html, url_data: dict):
+    page_type = url_data[PAGE_TYPE]
     if page_type == PageTypes.MOBILE:
-        return parse_html_mobile(html)
+        return parse_html_mobile(html, url_data)
     elif page_type == PageTypes.AUTOSCOUT24:
-        return parse_html_autoscout24(html)
+        return parse_html_autoscout24(html, url_data)
     else:
         return -1
 
 
-def get_html_link_to_car(car_id: int, page_type: PageTypes):
+def get_html_link_to_car(car_id, url_data: dict):
+    page_type = url_data[PAGE_TYPE]
     if page_type == PageTypes.MOBILE:
         return f"https://suchen.mobile.de/fahrzeuge/details.html?id={car_id}"
     elif page_type == PageTypes.AUTOSCOUT24:
-        return parse_html_autoscout24(html)
+        return url_data["autoscout_detail_links"][car_id]
     else:
-        return -1
+        return None
 
 
 def get_cars_from_url(url_data):
-    data = str(get_html(url_data[URL_PATH]))
-    return parse_html(data, url_data[PAGE_TYPE])
+    html = str(get_html(url_data[URL_PATH]))
+    return parse_html(html, url_data)
 
 
 def build_menu(buttons, n_cols, header_buttons=None, footer_buttons=None):
@@ -184,19 +195,18 @@ def check_urls(context, chat_data, chat_id):
         curr_cars = get_cars_from_url(url)
 
         new_cars = curr_cars.difference(url[CARS_FOUND])
-
         if len(new_cars) > 0:
-            print(url[CARS_FOUND], curr_cars, new_cars)
+            print(new_cars)
 
-            txt = f"Update! We found new cars for your <a href=\"{url[URL_PATH]}\">query</a>:"
+            txt = f"Update! We found new cars for your <a href=\"{url[URL_PATH]}\">query</a>:\n"
             for idx, id in enumerate(new_cars):
-                new_car_link = get_html_link_to_car(id, url[PAGE_TYPE])
-                txt += f" {idx+1}. <a href=\"{new_car_link}\">Link To Car</a>\n"
+                new_car_link = get_html_link_to_car(id, url)
+                txt += f" {idx + 1}. <a href=\"{new_car_link}\">Link To New Car</a>\n"
 
             context.bot.send_message(chat_id=chat_id,
                                      text=txt,
                                      parse_mode=telegram.ParseMode.HTML)
-            url[CARS_FOUND] = curr_cars
+        url[CARS_FOUND] = curr_cars
 
 
 def list_func(update, context):
@@ -204,12 +214,27 @@ def list_func(update, context):
     chat_data[STATE] = ChatStates.INIT
     chat_id = update.effective_chat.id
     if len(chat_data[URLS]) > 0:
-        check_urls(context, chat_data, chat_id)
         txt = "You have registered these search queries:\n"
         for idx, url in enumerate(chat_data[URLS]):
             txt += f" {idx + 1:<2}: <b>{url[PAGE_TYPE].value.upper()}</b>: I found <b>{len(url[CARS_FOUND])}</b> cars. Open <a href=\"{url[URL_PATH]}\">URL</a>\n"
+        txt += "\nUse /update to manually trigger a url check."
     else:
-        txt = "No queries register. Use /watch to register a new query. Use /move to remove a new query."
+        txt = "No queries register. Use /watch to register a new query."
+
+    context.bot.send_message(chat_id=chat_id,
+                             text=txt,
+                             parse_mode=telegram.ParseMode.HTML,
+                             disable_web_page_preview=True)
+
+
+def update(update, context):
+    chat_data = get_chat(context, update.effective_chat.id)
+    chat_data[STATE] = ChatStates.INIT
+    chat_id = update.effective_chat.id
+    if len(chat_data[URLS]) > 0:
+        check_urls(context, chat_data, chat_id)
+    else:
+        txt = "No queries register. Use /watch to register a new query."
 
     context.bot.send_message(chat_id=chat_id,
                              text=txt,
@@ -266,7 +291,7 @@ def watch(update, context, chat_id, chat_data, url):
         context.job_queue.run_repeating(on_timeout, check_interval, context=chat_id, name=str(chat_id))
         update.message.reply_text("Successfully registered. You will get notified when new cars are available! "
                                   f"Currently, your query shows {len(curr_cars)} vehicles. "
-                                  f"Checking for updates every {check_interval/60} minutes...")
+                                  f"Checking for updates every {check_interval / 60} minutes...")
     except (IndexError, ValueError):
         update.message.reply_text('Usage: /watch')
 
@@ -308,6 +333,8 @@ def main() -> None:
     dispatcher.add_handler(CommandHandler('remove', start_remove))
 
     dispatcher.add_handler(CommandHandler('list', list_func))
+
+    dispatcher.add_handler(CommandHandler('update', update))
 
     process_text_handler = MessageHandler(Filters.text & (~Filters.command), process_text)
     dispatcher.add_handler(process_text_handler)
