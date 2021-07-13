@@ -130,6 +130,15 @@ def parse_html(html, page_type: PageTypes):
         return -1
 
 
+def get_html_link_to_car(car_id: int, page_type: PageTypes):
+    if page_type == PageTypes.MOBILE:
+        return f"https://suchen.mobile.de/fahrzeuge/details.html?id={car_id}"
+    elif page_type == PageTypes.AUTOSCOUT24:
+        return parse_html_autoscout24(html)
+    else:
+        return -1
+
+
 def get_cars_from_url(url_data):
     data = str(get_html(url_data[URL_PATH]))
     return parse_html(data, url_data[PAGE_TYPE])
@@ -174,11 +183,18 @@ def check_urls(context, chat_data, chat_id):
         print(f"Checking url {idx} from {url[PAGE_TYPE]}.")
         curr_cars = get_cars_from_url(url)
 
-        if url[CARS_FOUND] != curr_cars:
-            print(url[CARS_FOUND], curr_cars)
+        new_cars = curr_cars.difference(url[CARS_FOUND])
+
+        if len(new_cars) > 0:
+            print(url[CARS_FOUND], curr_cars, new_cars)
+
+            txt = f"Update! We found new cars for your <a href=\"{url[URL_PATH]}\">query</a>:"
+            for idx, id in enumerate(new_cars):
+                new_car_link = get_html_link_to_car(id, url[PAGE_TYPE])
+                txt += f" {idx+1}. <a href=\"{new_car_link}\">Link To Car</a>\n"
+
             context.bot.send_message(chat_id=chat_id,
-                                     text=f"The list of vehicles change! Check this "
-                                          f"<a href=\"{url[URL_PATH]}\">link</a>!",
+                                     text=txt,
                                      parse_mode=telegram.ParseMode.HTML)
             url[CARS_FOUND] = curr_cars
 
