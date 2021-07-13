@@ -190,6 +190,7 @@ def start_watch(update, context):
 
 
 def check_urls(context, chat_data, chat_id):
+    any_updates = False
     for idx, url in enumerate(chat_data[URLS]):
         print(f"Checking url {idx} from {url[PAGE_TYPE]}.")
         curr_cars = get_cars_from_url(url)
@@ -197,6 +198,7 @@ def check_urls(context, chat_data, chat_id):
         new_cars = curr_cars.difference(url[CARS_FOUND])
         if len(new_cars) > 0:
             print(new_cars)
+            any_updates = True
 
             txt = f"Update! We found new cars for your <a href=\"{url[URL_PATH]}\">query</a>:\n"
             for idx, id in enumerate(new_cars):
@@ -207,6 +209,7 @@ def check_urls(context, chat_data, chat_id):
                                      text=txt,
                                      parse_mode=telegram.ParseMode.HTML)
         url[CARS_FOUND] = curr_cars
+    return any_updates
 
 
 def list_func(update, context):
@@ -231,15 +234,19 @@ def update(update, context):
     chat_data = get_chat(context, update.effective_chat.id)
     chat_data[STATE] = ChatStates.INIT
     chat_id = update.effective_chat.id
+    txt = None
     if len(chat_data[URLS]) > 0:
-        check_urls(context, chat_data, chat_id)
+        any_updates = check_urls(context, chat_data, chat_id)
+        if not any_updates:
+            txt = "No updates available."
     else:
         txt = "No queries register. Use /watch to register a new query."
 
-    context.bot.send_message(chat_id=chat_id,
-                             text=txt,
-                             parse_mode=telegram.ParseMode.HTML,
-                             disable_web_page_preview=True)
+    if txt:
+        context.bot.send_message(chat_id=chat_id,
+                                 text=txt,
+                                 parse_mode=telegram.ParseMode.HTML,
+                                 disable_web_page_preview=True)
 
 
 def on_timeout(context: CallbackContext) -> None:
