@@ -236,6 +236,9 @@ def update(update, context):
     chat_id = update.effective_chat.id
     txt = None
     if len(chat_data[URLS]) > 0:
+        context.bot.send_message(chat_id=chat_id,
+                                 text="Checking URLs. Please wait...")
+
         any_updates = check_urls(context, chat_data, chat_id)
         if not any_updates:
             txt = "No updates available."
