@@ -208,7 +208,7 @@ def check_urls(context, chat_data, chat_id):
             context.bot.send_message(chat_id=chat_id,
                                      text=txt,
                                      parse_mode=telegram.ParseMode.HTML)
-        url[CARS_FOUND] = curr_cars
+        url[CARS_FOUND].update(curr_cars)
     return any_updates
 
 
